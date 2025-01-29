@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dystopian Runner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to Dystopian Runner</h1>
+        <div class="menu">
+            <a href="{{ url_for('game') }}" class="button">Start Game</a>
+            <button onclick="showHighScores()" class="button">High Scores</button>
+            <button onclick="showInstructions()" class="button">Instructions</button>
+        </div>
+        
+        <div id="instructions" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>How to Play</h2>
+                <ul>
+                    <li>Use arrow keys to move left/right</li>
+                    <li>Press SPACE to jump (double jump available)</li>
+                    <li>Press DOWN to squat</li>
+                    <li>Press X to shoot lasers</li>
+                    <li>Press P to pause</li>
+                    <li>Press C to enter cheat codes</li>
+                    <li>Press R to restart</li>
+                </ul>
+                <button onclick="closeModal('instructions')" class="button">Close</button>
+            </div>
+        </div>
+
+        <div id="highScores" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>High Scores</h2>
+                <div id="scoresList">
+                    <!-- Scores will be loaded here -->
+                </div>
+                <button onclick="closeModal('highScores')" class="button">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/menu.js') }}"></script>
+</body>
+</html> 
