@@ -3,6 +3,10 @@ const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 const FPS = 60;
 
+// Canvas dimensions
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+
 // Colors (RGB)
 const COLORS = {
     BLACK: [0, 0, 0],
@@ -21,21 +25,50 @@ const COLORS = {
     CHEESE_SHADOW: [230, 171, 0]
 };
 
-// Player Settings
-const PLAYER = {
-    WIDTH: 80,
-    HEIGHT: 80,
-    SQUAT_HEIGHT: 50,
-    SPEED: 5,
-    SQUAT_SPEED: 3,
-    JUMP_POWER: -15,
-    DOUBLE_JUMP_POWER: -12,
-    GRAVITY: 0.8,
-    GROUND_HEIGHT: WINDOW_HEIGHT - 100,
-    BOUNCE_AMPLITUDE: 1.5,
-    BOUNCE_SPEED: 0.03,
-    TILT_MAX: 5,
-    WOBBLE_SPEED: 0.02
+// Player constants
+const PLAYER_WIDTH = 50;
+const PLAYER_HEIGHT = 80;
+const PLAYER_SQUAT_HEIGHT = 40;
+const PLAYER_SPEED = 5;
+const PLAYER_JUMP_POWER = -15;
+const GRAVITY = 0.8;
+const GROUND_HEIGHT = CANVAS_HEIGHT - 100;
+
+// Game mechanics
+const INITIAL_HEALTH = 3;
+const SPEED_BOOST_MULTIPLIER = 1.5;
+const JUMP_BOOST_MULTIPLIER = 1.2;
+const POWER_UP_DURATION = 5000; // milliseconds
+const PLAYER_SQUAT_SPEED = 3;
+
+// Animation constants
+const CHARACTER_BOUNCE_SPEED = 0.1;
+const CHARACTER_BOUNCE_AMPLITUDE = 3;
+const CHARACTER_WOBBLE_SPEED = 0.05;
+const CHARACTER_TILT_MAX = 15;
+
+// Particle effects
+const PARTICLE_COUNT = 10;
+const PARTICLE_LIFETIME = 30;
+const PARTICLE_COLORS = ['#FFD700', '#FFA500', '#FF4500', '#FF6347'];
+
+// Power-up messages
+const POWER_UP_MESSAGES = {
+    'SPEED': 'Speed Boost!',
+    'JUMP': 'Super Jump!'
+};
+
+// Message display
+const MESSAGE_DURATION = 60;
+const MESSAGE_FADE_TIME = 30;
+
+// Game states
+const PLAYER_STATES = {
+    'IDLE': 'idle',
+    'RUNNING': 'running',
+    'JUMPING': 'jumping',
+    'SQUATTING': 'squatting',
+    'HURT': 'hurt'
 };
 
 // Platform Settings
@@ -109,7 +142,6 @@ const LEVELS = {
 };
 
 // Game Settings
-const INITIAL_HEALTH = 3;
 const SCROLL_SPEED = 3;
 const SCORE_PER_DISTANCE = 1;
 const DIFFICULTY_INCREASE_RATE = 0.1;
