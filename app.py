@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, send_from_directory, jsonify, request
 import os
 from dotenv import load_dotenv
 
@@ -13,14 +13,22 @@ os.makedirs('templates', exist_ok=True)
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    """Redirect to game page"""
+    return render_template('game.html')
 
 @app.route('/game')
 def game():
+    """Serve the game page"""
     return render_template('game.html')
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    """Serve static files"""
+    return send_from_directory('static', path)
 
 @app.route('/api/save_score', methods=['POST'])
 def save_score():
+    """Save player score (can be expanded later)"""
     data = request.get_json()
     score = data.get('score', 0)
     # Here you could save the score to a database

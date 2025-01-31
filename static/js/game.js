@@ -2,272 +2,451 @@ class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
+        this.loadingScreen = document.getElementById('loadingScreen');
         
-        // Set canvas size
-        this.canvas.width = CANVAS_WIDTH;
-        this.canvas.height = CANVAS_HEIGHT;
+        // Game state
+        this.isRunning = false;
+        this.isPaused = false;
+        this.gameOver = false;
+        this.score = 0;
+        this.currentLevel = 1;
+        this.levelMessageTimer = LEVEL_MESSAGE_DURATION;
         
         // Initialize game objects
-        this.player = new Player(this);
+        this.player = new Player();
         this.platforms = [];
         this.obstacles = [];
         this.cats = [];
         this.cheeseballs = [];
+        this.lastCatSpawn = 0;
+        this.lastCheeseballSpawn = 0;
+        this.scrollSpeed = SCROLL_SPEED;
         
-        // Game state
-        this.score = 0;
-        this.gameOver = false;
-        this.paused = false;
-        
-        // Input handling
-        this.keys = {};
-        this.setupInputHandlers();
-        
-        // Start the game loop
-        this.lastTime = 0;
-        this.accumulator = 0;
-        this.timestep = 1000 / 60; // 60 FPS
-        
-        // Start the game
-        this.generateInitialPlatforms();
-        this.animate();
+        // Load assets
+        this.loadAssets().then(() => {
+            this.setupEventListeners();
+            this.generateInitialChunk();
+            this.start();
+        });
     }
-    
-    setupInputHandlers() {
-        window.addEventListener('keydown', (e) => {
-            this.keys[e.code] = true;
-            if (e.code === 'Space') {
-                this.player.jump();
+
+    async loadAssets() {
+        try {
+            // Load images
+            this.ryanImage = await this.loadImage('static/images/Ryan.png');
+            this.dalbirdImage = await this.loadImage('static/images/dalbird.png');
+            this.villainImage = await this.loadImage('static/images/villain.png');
+            
+            // Load audio
+            this.superBassAudio = new Audio('static/audio/superbass.mp3');
+            this.superBassAudio.loop = true;
+            
+            // Load Catlock GIF frames
+            this.catlockFrames = await this.loadGifFrames('static/images/Catlock2.gif');
+            
+            // Hide loading screen
+            this.loadingScreen.style.display = 'none';
+        } catch (error) {
+            console.error('Error loading assets:', error);
+            this.loadingScreen.textContent = 'Error loading game assets. Please refresh.';
+        }
+    }
+
+    loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => {
+                console.warn(`Failed to load image: ${src}`);
+                resolve(null); // Resolve with null to continue game without image
+            };
+            img.src = src;
+        });
+    }
+
+    async loadGifFrames(src) {
+        // This would normally use a GIF decoder library
+        // For now, return null to indicate GIF support needs to be implemented
+        console.warn('GIF support not implemented');
+        return null;
+    }
+
+    setupEventListeners() {
+        // Keyboard events
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        document.addEventListener('keyup', (e) => this.handleKeyUp(e));
+        
+        // Touch events for mobile support
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+    }
+
+    handleKeyDown(e) {
+        if (this.gameOver && e.key === 'r') {
+            this.restart();
+            return;
+        }
+
+        if (e.key === 'p') {
+            this.togglePause();
+            return;
+        }
+
+        if (!this.isPaused && !this.gameOver) {
+            switch (e.key) {
+                case ' ':
+                    this.player.jump();
+                    break;
+                case 'ArrowLeft':
+                    this.player.moveLeft();
+                    break;
+                case 'ArrowRight':
+                    this.player.moveRight();
+                    break;
+                case 'ArrowDown':
+                    this.player.squat();
+                    break;
+                case 'x':
+                    this.player.shootLaser();
+                    break;
             }
-            // Prevent space from scrolling the page
-            if (e.code === 'Space') {
-                e.preventDefault();
+        }
+    }
+
+    handleKeyUp(e) {
+        if (!this.isPaused && !this.gameOver) {
+            switch (e.key) {
+                case 'ArrowLeft':
+                case 'ArrowRight':
+                    this.player.stopMoving();
+                    break;
+                case 'ArrowDown':
+                    this.player.stopSquatting();
+                    break;
             }
-        });
-        
-        window.addEventListener('keyup', (e) => {
-            this.keys[e.code] = false;
-        });
+        }
     }
-    
-    generateInitialPlatforms() {
-        // Add ground platform
-        this.platforms.push({
-            x: 0,
-            y: GROUND_HEIGHT,
-            width: CANVAS_WIDTH,
-            height: CANVAS_HEIGHT - GROUND_HEIGHT
-        });
+
+    handleTouchStart(e) {
+        e.preventDefault();
+        if (!this.isPaused && !this.gameOver) {
+            // Simple touch controls - jump on touch
+            this.player.jump();
+        }
     }
-    
-    update(deltaTime) {
-        if (this.gameOver || this.paused) return;
-        
-        // Update player
-        this.player.update();
-        
-        // Update score
-        this.score++;
-        document.getElementById('score').textContent = Math.floor(this.score / 10);
-        
-        // Check for game over
-        if (this.player.health <= 0) {
-            this.gameOver = true;
-            this.saveScore();
+
+    handleTouchEnd(e) {
+        e.preventDefault();
+    }
+
+    generateInitialChunk() {
+        let x = WINDOW_WIDTH;
+        while (x < WINDOW_WIDTH * 2) {
+            const width = Math.random() * (MAX_PLATFORM_WIDTH - MIN_PLATFORM_WIDTH) + MIN_PLATFORM_WIDTH;
+            const y = Math.random() * PLATFORM_HEIGHT_VARIANCE + (GROUND_HEIGHT - PLATFORM_HEIGHT_VARIANCE);
+            
+            this.platforms.push(new Platform(x, y, width));
+            
+            // Maybe add obstacle
+            if (Math.random() < 0.5) {
+                const obsType = Object.keys(OBSTACLE_TYPES)[Math.floor(Math.random() * Object.keys(OBSTACLE_TYPES).length)];
+                const obsY = y - OBSTACLE_TYPES[obsType].height;
+                this.obstacles.push(new Obstacle(x + width/2, obsY, obsType));
+            }
+            
+            // Maybe add cheeseball
+            if (Math.random() < 0.3) {
+                const powerType = Math.random() < 0.5 ? 'SPEED' : 'JUMP';
+                const cheeseballY = y - CHEESEBALL_SIZE - 20;
+                this.cheeseballs.push(new Cheeseball(x + width/2, cheeseballY, powerType));
+            }
+            
+            x += width + Math.random() * (MAX_GAP - MIN_GAP) + MIN_GAP;
+        }
+    }
+
+    start() {
+        if (!this.isRunning) {
+            this.isRunning = true;
+            this.lastFrameTime = performance.now();
+            this.gameLoop();
+        }
+    }
+
+    gameLoop(currentTime) {
+        if (!this.isRunning) return;
+
+        // Calculate delta time
+        const deltaTime = (currentTime - this.lastFrameTime) / 1000;
+        this.lastFrameTime = currentTime;
+
+        if (!this.isPaused && !this.gameOver) {
+            this.update(deltaTime);
         }
         
+        this.draw();
+        
+        requestAnimationFrame((time) => this.gameLoop(time));
+    }
+
+    update(deltaTime) {
+        // Update player
+        this.player.update(deltaTime);
+        
         // Update game objects
-        this.updatePlatforms();
-        this.updateObstacles();
-        this.updateCats();
-        this.updateCheeseballs();
+        this.platforms.forEach(platform => platform.update(this.scrollSpeed));
+        this.obstacles.forEach(obstacle => obstacle.update(this.scrollSpeed));
+        this.cats.forEach(cat => cat.update(this.player, this.platforms));
+        this.cheeseballs.forEach(ball => ball.update(this.scrollSpeed));
+        
+        // Remove off-screen objects
+        this.platforms = this.platforms.filter(p => p.x + p.width > 0);
+        this.obstacles = this.obstacles.filter(o => o.x + o.width > 0);
+        this.cats = this.cats.filter(c => c.x + c.width > -100);
+        this.cheeseballs = this.cheeseballs.filter(b => b.x + b.size > 0);
+        
+        // Generate new chunks if needed
+        if (this.platforms[this.platforms.length - 1].x + this.platforms[this.platforms.length - 1].width < WINDOW_WIDTH) {
+            this.generateInitialChunk();
+        }
+        
+        // Spawn new cats
+        const currentTime = performance.now();
+        if (currentTime - this.lastCatSpawn > CAT_SPAWN_INTERVAL) {
+            this.cats.push(new Cat(WINDOW_WIDTH + 50, GROUND_HEIGHT - CAT_HEIGHT));
+            this.lastCatSpawn = currentTime;
+        }
+        
+        // Update score and difficulty
+        this.score += SCORE_PER_DISTANCE;
+        this.scrollSpeed += DIFFICULTY_INCREASE_RATE / FPS;
         
         // Check collisions
         this.checkCollisions();
         
-        // Generate new obstacles
-        if (Math.random() < 0.02) {
-            this.generateObstacle();
-        }
-        
-        // Generate power-ups
-        if (Math.random() < 0.005) {
-            this.generatePowerUp();
-        }
+        // Check level progression
+        this.checkLevelProgression();
     }
-    
-    updatePlatforms() {
-        this.platforms.forEach(platform => {
-            platform.x -= 3; // Scroll speed
-        });
-        
-        // Remove off-screen platforms
-        this.platforms = this.platforms.filter(platform => platform.x + platform.width > 0);
-        
-        // Generate new platforms
-        if (this.platforms[this.platforms.length - 1].x + this.platforms[this.platforms.length - 1].width < CANVAS_WIDTH) {
-            this.generatePlatform();
-        }
-    }
-    
-    generatePlatform() {
-        const lastPlatform = this.platforms[this.platforms.length - 1];
-        const gap = Math.random() * 100 + 50;
-        const width = Math.random() * 200 + 100;
-        
-        this.platforms.push({
-            x: lastPlatform.x + lastPlatform.width + gap,
-            y: GROUND_HEIGHT,
-            width: width,
-            height: CANVAS_HEIGHT - GROUND_HEIGHT
-        });
-    }
-    
-    generateObstacle() {
-        const obstacle = {
-            x: CANVAS_WIDTH,
-            y: GROUND_HEIGHT - 50,
-            width: 30,
-            height: 50,
-            type: Math.random() < 0.5 ? 'spike' : 'block'
-        };
-        this.obstacles.push(obstacle);
-    }
-    
-    generatePowerUp() {
-        const powerUp = {
-            x: CANVAS_WIDTH,
-            y: Math.random() * (GROUND_HEIGHT - 100) + 50,
-            width: 30,
-            height: 30,
-            type: Math.random() < 0.5 ? 'SPEED' : 'JUMP'
-        };
-        this.cheeseballs.push(powerUp);
-    }
-    
-    checkCollisions() {
-        // Check obstacle collisions
-        this.obstacles.forEach(obstacle => {
-            if (this.checkCollision(this.player, obstacle)) {
-                this.player.takeDamage();
-            }
-        });
-        
-        // Check power-up collisions
-        this.cheeseballs.forEach((powerUp, index) => {
-            if (this.checkCollision(this.player, powerUp)) {
-                this.player.activatePowerUp(powerUp.type);
-                this.cheeseballs.splice(index, 1);
-            }
-        });
-    }
-    
-    checkCollision(a, b) {
-        return a.x < b.x + b.width &&
-               a.x + a.width > b.x &&
-               a.y < b.y + b.height &&
-               a.y + a.height > b.y;
-    }
-    
+
     draw() {
         // Clear canvas
-        this.ctx.fillStyle = '#000000';
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        this.ctx.fillStyle = LEVELS[this.currentLevel].background;
+        this.ctx.fillRect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
         
-        // Draw platforms
-        this.ctx.fillStyle = '#333333';
-        this.platforms.forEach(platform => {
-            this.ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
-        });
+        // Draw ground
+        this.ctx.fillStyle = LEVELS[this.currentLevel].ground;
+        this.ctx.fillRect(0, GROUND_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT - GROUND_HEIGHT);
         
-        // Draw obstacles
-        this.ctx.fillStyle = '#FF0000';
-        this.obstacles.forEach(obstacle => {
-            this.ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-        });
-        
-        // Draw power-ups
-        this.cheeseballs.forEach(powerUp => {
-            this.ctx.fillStyle = powerUp.type === 'SPEED' ? '#FFD700' : '#00FF00';
-            this.ctx.beginPath();
-            this.ctx.arc(powerUp.x + powerUp.width/2, powerUp.y + powerUp.height/2, 
-                        powerUp.width/2, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
+        // Draw game objects
+        this.platforms.forEach(platform => platform.draw(this.ctx, LEVELS[this.currentLevel].platform));
+        this.obstacles.forEach(obstacle => obstacle.draw(this.ctx));
+        this.cats.forEach(cat => cat.draw(this.ctx));
+        this.cheeseballs.forEach(ball => ball.draw(this.ctx));
         
         // Draw player
         this.player.draw(this.ctx);
         
-        // Draw game over screen
+        // Draw HUD
+        this.drawHUD();
+        
+        // Draw level message
+        if (this.levelMessageTimer > 0) {
+            this.drawLevelMessage();
+            this.levelMessageTimer--;
+        }
+        
+        // Draw game over message
         if (this.gameOver) {
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            this.drawGameOver();
+        }
+        
+        // Draw pause overlay
+        if (this.isPaused) {
+            this.drawPauseOverlay();
+        }
+    }
+
+    drawHUD() {
+        this.ctx.font = '24px Arial';
+        this.ctx.fillStyle = WHITE;
+        this.ctx.textAlign = 'left';
+        
+        // Draw score
+        this.ctx.fillText(`Score: ${Math.floor(this.score)}`, 10, 30);
+        
+        // Draw health
+        this.ctx.fillText(`Health: ${this.player.unlimited_health ? '∞' : this.player.health}`, 10, 60);
+        
+        // Draw level
+        this.ctx.fillText(`Level: ${this.currentLevel} - ${LEVELS[this.currentLevel].name}`, 10, 90);
+        
+        // Draw active power-ups
+        if (this.player.speedBoost) {
+            this.ctx.fillStyle = CHEESEBALL_COLORS.SPEED;
+            this.ctx.fillText('SPEED BOOST!', 10, 120);
+        }
+        if (this.player.jumpBoost) {
+            this.ctx.fillStyle = CHEESEBALL_COLORS.JUMP;
+            this.ctx.fillText('JUMP BOOST!', 10, 150);
+        }
+    }
+
+    drawLevelMessage() {
+        const alpha = Math.min(1, this.levelMessageTimer / LEVEL_FADE_DURATION);
+        this.ctx.globalAlpha = alpha;
+        this.ctx.font = '36px Arial';
+        this.ctx.fillStyle = WHITE;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(LEVELS[this.currentLevel].message, WINDOW_WIDTH/2, WINDOW_HEIGHT/3);
+        this.ctx.globalAlpha = 1;
+    }
+
+    drawGameOver() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        
+        this.ctx.font = '48px Arial';
+        this.ctx.fillStyle = WHITE;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('Game Over!', WINDOW_WIDTH/2, WINDOW_HEIGHT/2 - 50);
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('Press R to restart', WINDOW_WIDTH/2, WINDOW_HEIGHT/2 + 50);
+    }
+
+    drawPauseOverlay() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        
+        this.ctx.font = '48px Arial';
+        this.ctx.fillStyle = WHITE;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', WINDOW_WIDTH/2, WINDOW_HEIGHT/2 - 50);
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('Press P to resume', WINDOW_WIDTH/2, WINDOW_HEIGHT/2 + 50);
+    }
+
+    checkCollisions() {
+        // Platform collisions
+        for (const platform of this.platforms) {
+            if (this.player.checkPlatformCollision(platform)) {
+                break;
+            }
+        }
+        
+        // Obstacle collisions
+        for (const obstacle of this.obstacles) {
+            if (this.player.checkObstacleCollision(obstacle)) {
+                if (this.player.health <= 0) {
+                    this.gameOver = true;
+                    if (this.superBassAudio) this.superBassAudio.pause();
+                }
+                break;
+            }
+        }
+        
+        // Cat collisions
+        for (const cat of this.cats) {
+            if (this.player.checkCatCollision(cat)) {
+                if (this.player.health <= 0) {
+                    this.gameOver = true;
+                    if (this.superBassAudio) this.superBassAudio.pause();
+                }
+                break;
+            }
+        }
+        
+        // Cheeseball collisions
+        for (const ball of this.cheeseballs) {
+            if (!ball.collected && this.player.checkCheeseballCollision(ball)) {
+                this.player.activatePowerUp(ball.type);
+                ball.collected = true;
+                this.cheeseballs = this.cheeseballs.filter(b => b !== ball);
+            }
+        }
+        
+        // Laser collisions
+        for (const laser of this.player.lasers) {
+            // Check cat collisions
+            for (const cat of this.cats) {
+                if (laser.checkCollision(cat)) {
+                    this.player.lasers = this.player.lasers.filter(l => l !== laser);
+                    this.cats = this.cats.filter(c => c !== cat);
+                    this.score += CAT_ELIMINATION_SCORE;
+                    break;
+                }
+            }
             
-            this.ctx.fillStyle = '#FFFFFF';
-            this.ctx.font = '48px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('Game Over', CANVAS_WIDTH/2, CANVAS_HEIGHT/2);
-            this.ctx.font = '24px Arial';
-            this.ctx.fillText(`Score: ${Math.floor(this.score/10)}`, CANVAS_WIDTH/2, CANVAS_HEIGHT/2 + 40);
-            this.ctx.fillText('Press Space to Restart', CANVAS_WIDTH/2, CANVAS_HEIGHT/2 + 80);
+            // Check obstacle collisions
+            for (const obstacle of this.obstacles) {
+                if (laser.checkCollision(obstacle)) {
+                    this.player.lasers = this.player.lasers.filter(l => l !== laser);
+                    this.obstacles = this.obstacles.filter(o => o !== obstacle);
+                    this.score += CAT_ELIMINATION_SCORE / 2;
+                    break;
+                }
+            }
         }
     }
-    
-    animate(currentTime = 0) {
-        const deltaTime = currentTime - this.lastTime;
-        this.lastTime = currentTime;
-        
-        this.accumulator += deltaTime;
-        
-        while (this.accumulator >= this.timestep) {
-            this.update(this.timestep);
-            this.accumulator -= this.timestep;
+
+    checkLevelProgression() {
+        for (let level = Object.keys(LEVELS).length; level > 0; level--) {
+            if (this.score >= LEVELS[level].score_required && this.currentLevel < level) {
+                this.currentLevel = level;
+                this.levelMessageTimer = LEVEL_MESSAGE_DURATION;
+                
+                // Play superbass.mp3 when entering Level 6
+                if (level === 6 && this.superBassAudio) {
+                    this.superBassAudio.currentTime = 0;
+                    this.superBassAudio.play();
+                }
+                
+                // Increase difficulty
+                this.scrollSpeed *= SPEED_SCALE_FACTOR;
+                return true;
+            }
         }
-        
-        this.draw();
-        requestAnimationFrame(this.animate.bind(this));
+        return false;
     }
-    
-    saveScore() {
-        const finalScore = Math.floor(this.score/10);
-        fetch('/api/save_score', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ score: finalScore })
-        });
+
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        if (this.isPaused && this.superBassAudio) {
+            this.superBassAudio.pause();
+        } else if (!this.isPaused && this.superBassAudio && this.currentLevel === 6) {
+            this.superBassAudio.play();
+        }
     }
-    
+
     restart() {
         // Reset game state
         this.score = 0;
+        this.currentLevel = 1;
+        this.levelMessageTimer = LEVEL_MESSAGE_DURATION;
+        this.scrollSpeed = SCROLL_SPEED;
         this.gameOver = false;
+        this.isPaused = false;
+        
+        // Reset game objects
+        this.player = new Player();
         this.platforms = [];
         this.obstacles = [];
         this.cats = [];
         this.cheeseballs = [];
+        this.lastCatSpawn = 0;
+        this.lastCheeseballSpawn = 0;
         
-        // Reset player
-        this.player = new Player(this);
+        // Stop music
+        if (this.superBassAudio) {
+            this.superBassAudio.pause();
+            this.superBassAudio.currentTime = 0;
+        }
         
-        // Reset platforms
-        this.generateInitialPlatforms();
-        
-        // Update score display
-        document.getElementById('score').textContent = '0';
-        document.getElementById('health').textContent = INITIAL_HEALTH;
+        // Generate new level
+        this.generateInitialChunk();
     }
 }
 
 // Start the game when the page loads
 window.addEventListener('load', () => {
-    const game = new Game();
-    
-    // Add restart functionality
-    window.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && game.gameOver) {
-            game.restart();
-        }
-    });
+    window.game = new Game();
 }); 
